@@ -8,7 +8,7 @@ const WHITE = 0xffffff;
 // Set FOOTER_GIF in your Netlify environment variables.
 // Example: https://cdn.example.com/banner.gif
 // Leave empty / unset to disable the footer image.
-const FOOTER_GIF = process.env.FOOTER_GIF || 'https://i.pinimg.com/736x/d2/54/b9/d254b9fa93edb9c1fca0b8a826e74fda.jpg';
+const FOOTER_GIF = process.env.FOOTER_GIF || '';
 
 // ── Helpers ───────────────────────────────────
 
@@ -715,6 +715,7 @@ function buildDiscordPayload(eventType, payload) {
       break;
     case 'workflow_job':
       // Hanya kirim kalau conclusion success
+      console.log(`⚙️  workflow_job action=${payload.action} conclusion=${payload.workflow_job?.conclusion}`);
       if (payload.workflow_job?.conclusion !== 'success') return null;
       result = buildWorkflowJobEmbed(payload);
       break;
@@ -754,9 +755,8 @@ function buildDiscordPayload(eventType, payload) {
   }
 
   // Webhook profile: nama project sebagai username, avatar custom
-  const repoName = payload.repository?.name || 'Pretty Hooks';
-  const AVATAR   = process.env.WEBHOOK_AVATAR
-    || 'https://i.pinimg.com/736x/3a/6a/b0/3a6ab0f5fc3fbef254484d57e686932a.jpg';
+  const repoName = 'Pretty Hooks';
+  const AVATAR   = 'https://i.pinimg.com/736x/3a/6a/b0/3a6ab0f5fc3fbef254484d57e686932a.jpg';
 
   return {
     username:   repoName,
@@ -795,62 +795,55 @@ async function sendToDiscord(webhookUrl, body) {
 // ── Netlify handler ───────────────────────────
 
 export const handler = async (event) => {
-  // Respond immediately so GitHub doesn't time out
-  const immediateResponse = {
-    statusCode: 202,
-    body: JSON.stringify({ message: 'Accepted' })
-  };
-
-  (async () => {
-    try {
-      // ── Parse body ──
-      let rawBody = event.body || '{}';
-      if (event.isBase64Encoded) {
-        rawBody = Buffer.from(rawBody, 'base64').toString('utf8');
-      }
-      const payload = JSON.parse(rawBody);
-
-      // ── Resolve Discord hook from URL path ──
-      const pathParts    = (event.path || '').split('/').filter(Boolean);
-      const funcIndex    = pathParts.findIndex(p => p === 'webhook');
-      const hookSegments = funcIndex !== -1 ? pathParts.slice(funcIndex + 1) : [];
-
-      if (!hookSegments.length) {
-        console.error('No Discord hook segments in path');
-        return;
-      }
-
-      const hook = hookSegments.join('/');
-      if (hook.length > 300) {
-        console.error('Hook path too long, possible injection attempt');
-        return;
-      }
-
-      // ── Detect GitHub event type ──
-      const headers   = Object.fromEntries(
-        Object.entries(event.headers || {}).map(([k, v]) => [k.toLowerCase(), v])
-      );
-      const eventType = headers['x-github-event'] || 'unknown';
-
-      console.log(`📨 GitHub event: ${eventType} | hook: ${hook}`);
-
-      // ── Build Discord payload ──
-      const discordPayload = buildDiscordPayload(eventType, payload);
-
-      if (!discordPayload) {
-        console.log(`⏭️  Event '${eventType}' ignored (ping / suppressed)`);
-        return;
-      }
-
-      // ── Send to Discord ──
-      const webhookUrl = `https://discord.com/api/webhooks/${encodeURIComponent(hook)}?with_components=true`;
-      await sendToDiscord(webhookUrl, discordPayload);
-
-      console.log(`✅ Sent '${eventType}' for ${payload.repository?.full_name}`);
-    } catch (err) {
-      console.error('❌ Webhook processing failed:', err.message);
+  try {
+    // ── Parse body ──
+    let rawBody = event.body || '{}';
+    if (event.isBase64Encoded) {
+      rawBody = Buffer.from(rawBody, 'base64').toString('utf8');
     }
-  })();
+    const payload = JSON.parse(rawBody);
 
-  return immediateResponse;
+    // ── Resolve Discord hook from URL path ──
+    const pathParts    = (event.path || '').split('/').filter(Boolean);
+    const funcIndex    = pathParts.findIndex(p => p === 'webhook');
+    const hookSegments = funcIndex !== -1 ? pathParts.slice(funcIndex + 1) : [];
+
+    if (!hookSegments.length) {
+      console.error('No Discord hook segments in path');
+      return { statusCode: 400, body: 'Missing hook' };
+    }
+
+    const hook = hookSegments.join('/');
+    if (hook.length > 300) {
+      console.error('Hook path too long, possible injection attempt');
+      return { statusCode: 400, body: 'Invalid hook' };
+    }
+
+    // ── Detect GitHub event type ──
+    const headers   = Object.fromEntries(
+      Object.entries(event.headers || {}).map(([k, v]) => [k.toLowerCase(), v])
+    );
+    const eventType = headers['x-github-event'] || 'unknown';
+
+    console.log(`📨 GitHub event: ${eventType} | hook: ${hook}`);
+
+    // ── Build Discord payload ──
+    const discordPayload = buildDiscordPayload(eventType, payload);
+
+    if (!discordPayload) {
+      console.log(`⏭️  Event '${eventType}' ignored (suppressed)`);
+      return { statusCode: 200, body: 'Ignored' };
+    }
+
+    // ── Send to Discord (awaited — jangan fire-and-forget di serverless!) ──
+    const webhookUrl = `https://discord.com/api/webhooks/${encodeURIComponent(hook)}?with_components=true`;
+    await sendToDiscord(webhookUrl, discordPayload);
+
+    console.log(`✅ Sent '${eventType}' for ${payload.repository?.full_name}`);
+    return { statusCode: 200, body: JSON.stringify({ ok: true }) };
+
+  } catch (err) {
+    console.error('❌ Webhook processing failed:', err.message);
+    return { statusCode: 500, body: err.message };
+  }
 };
