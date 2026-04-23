@@ -351,6 +351,171 @@ function buildWorkflowRunEmbed(payload) {
   };
 }
 
+function buildWorkflowJobEmbed(payload) {
+  const job    = payload.workflow_job;
+  const repo   = payload.repository?.full_name || 'unknown/repo';
+  const sender = payload.sender?.login || 'someone';
+
+  const conclusionColors = {
+    success:        0x57f287,
+    failure:        0xed4245,
+    cancelled:      0x95a5a6,
+    skipped:        0x95a5a6,
+    timed_out:      0xe67e22,
+    action_required: 0xfee75c
+  };
+
+  const color = job?.conclusion
+    ? conclusionColors[job.conclusion] || WHITE
+    : 0xfee75c;
+
+  const statusLabel = job?.conclusion
+    ? job.conclusion.charAt(0).toUpperCase() + job.conclusion.slice(1)
+    : (job?.status || 'Running');
+
+  // Duration calc
+  let durationStr = null;
+  if (job?.started_at && job?.completed_at) {
+    const secs = Math.round(
+      (new Date(job.completed_at) - new Date(job.started_at)) / 1000
+    );
+    durationStr = secs >= 60
+      ? `${Math.floor(secs / 60)}m ${secs % 60}s`
+      : `${secs}s`;
+  }
+
+  // Show failed/incomplete steps only
+  const failedSteps = (job?.steps || [])
+    .filter(s => s.conclusion && s.conclusion !== 'success' && s.conclusion !== 'skipped')
+    .map(s => `• ${s.name} → \`${s.conclusion}\``)
+    .join('\n');
+
+  const fields = [
+    { name: 'Status',   value: `\`${statusLabel}\``,                         inline: true },
+    { name: 'Runner',   value: `\`${job?.runner_name || 'unknown'}\``,        inline: true },
+    { name: 'Duration', value: durationStr ? `\`${durationStr}\`` : '`—`',   inline: true }
+  ];
+
+  if (failedSteps) {
+    fields.push({ name: '⚠️ Failed Steps', value: failedSteps, inline: false });
+  }
+
+  return {
+    embed: {
+      author: { name: sender, icon_url: avatarUrl(sender), url: profileUrl(sender) },
+      title: trunc(`Job: ${job?.name || 'Workflow Job'}`, 200),
+      url: job?.html_url || `https://github.com/${repo}/actions`,
+      color,
+      fields,
+      timestamp: new Date().toISOString()
+    },
+    components: actionComponents(
+      { label: 'View Job',  url: job?.html_url },
+      { label: 'Open Repo', url: `https://github.com/${repo}` }
+    )
+  };
+}
+
+function buildCheckRunEmbed(payload) {
+  const run    = payload.check_run;
+  const repo   = payload.repository?.full_name || 'unknown/repo';
+  const sender = payload.sender?.login || 'someone';
+
+  const conclusionColors = {
+    success:         0x57f287,
+    failure:         0xed4245,
+    neutral:         0x95a5a6,
+    cancelled:       0x95a5a6,
+    skipped:         0x95a5a6,
+    timed_out:       0xe67e22,
+    action_required: 0xfee75c
+  };
+
+  const color = run?.conclusion
+    ? conclusionColors[run.conclusion] || WHITE
+    : 0xfee75c;
+
+  const statusLabel = run?.conclusion
+    ? run.conclusion.charAt(0).toUpperCase() + run.conclusion.slice(1)
+    : (run?.status || 'In Progress');
+
+  let durationStr = null;
+  if (run?.started_at && run?.completed_at) {
+    const secs = Math.round(
+      (new Date(run.completed_at) - new Date(run.started_at)) / 1000
+    );
+    durationStr = secs >= 60
+      ? `${Math.floor(secs / 60)}m ${secs % 60}s`
+      : `${secs}s`;
+  }
+
+  const fields = [
+    { name: 'Status',   value: `\`${statusLabel}\``,                        inline: true },
+    { name: 'Branch',   value: `\`${run?.check_suite?.head_branch || '?'}\``, inline: true },
+    { name: 'Duration', value: durationStr ? `\`${durationStr}\`` : '`—`',  inline: true }
+  ];
+
+  if (run?.output?.title) {
+    fields.push({ name: run.output.title, value: trunc(run.output.summary || '—', 500), inline: false });
+  }
+
+  return {
+    embed: {
+      author: { name: sender, icon_url: avatarUrl(sender), url: profileUrl(sender) },
+      title: trunc(`Check: ${run?.name || 'Check Run'}`, 200),
+      url: run?.html_url || `https://github.com/${repo}/actions`,
+      color,
+      fields,
+      timestamp: new Date().toISOString()
+    },
+    components: actionComponents(
+      { label: 'View Check', url: run?.html_url },
+      { label: 'Open Repo',  url: `https://github.com/${repo}` }
+    )
+  };
+}
+
+function buildCheckSuiteEmbed(payload) {
+  const suite  = payload.check_suite;
+  const repo   = payload.repository?.full_name || 'unknown/repo';
+  const sender = payload.sender?.login || 'someone';
+
+  const conclusionColors = {
+    success:   0x57f287,
+    failure:   0xed4245,
+    neutral:   0x95a5a6,
+    cancelled: 0x95a5a6,
+    timed_out: 0xe67e22
+  };
+
+  const color = suite?.conclusion
+    ? conclusionColors[suite.conclusion] || WHITE
+    : 0xfee75c;
+
+  const statusLabel = suite?.conclusion
+    ? suite.conclusion.charAt(0).toUpperCase() + suite.conclusion.slice(1)
+    : (suite?.status || 'In Progress');
+
+  return {
+    embed: {
+      author: { name: sender, icon_url: avatarUrl(sender), url: profileUrl(sender) },
+      title: `Check Suite: ${statusLabel}`,
+      url: `https://github.com/${repo}/actions`,
+      color,
+      fields: [
+        { name: 'Branch', value: `\`${suite?.head_branch || '?'}\``, inline: true },
+        { name: 'Commit', value: `\`${(suite?.head_sha || '?').slice(0, 7)}\``, inline: true },
+        { name: 'App',    value: `\`${suite?.app?.name || 'GitHub Actions'}\``,  inline: true }
+      ],
+      timestamp: new Date().toISOString()
+    },
+    components: actionComponents(
+      { label: 'View Actions', url: `https://github.com/${repo}/actions` },
+      { label: 'Open Repo',    url: `https://github.com/${repo}` }
+    )
+  };
+}
+
 function buildPullRequestReviewEmbed(payload) {
   const review = payload.review;
   const pr     = payload.pull_request;
@@ -544,7 +709,24 @@ function buildDiscordPayload(eventType, payload) {
       result = buildForkEmbed(payload);
       break;
     case 'workflow_run':
+      // Hanya kirim kalau sudah completed (skip 'requested' / 'in_progress')
+      if (payload.action !== 'completed') return null;
       result = buildWorkflowRunEmbed(payload);
+      break;
+    case 'workflow_job':
+      // Hanya kirim kalau conclusion success
+      if (payload.workflow_job?.conclusion !== 'success') return null;
+      result = buildWorkflowJobEmbed(payload);
+      break;
+    case 'check_run':
+      // Skip created / rerequested, cukup completed
+      if (payload.action !== 'completed') return null;
+      result = buildCheckRunEmbed(payload);
+      break;
+    case 'check_suite':
+      // Skip requested / rerequested, cukup completed
+      if (payload.action !== 'completed') return null;
+      result = buildCheckSuiteEmbed(payload);
       break;
     case 'pull_request_review':
       result = buildPullRequestReviewEmbed(payload);
