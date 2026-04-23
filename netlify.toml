@@ -1,0 +1,6 @@
+[build]
+  functions = "functions"
+
+[functions]
+  # Background function akan otomatis dikenali dari akhiran .background.js
+  node_bundler = "esbuild"

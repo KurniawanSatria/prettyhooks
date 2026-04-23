@@ -1,0 +1,11 @@
+{
+  "name": "prettyhooks",
+  "version": "1.0.0",
+  "type": "module",
+  "scripts": {
+    "dev": "netlify dev"
+  },
+  "devDependencies": {
+    "@netlify/functions": "^2.8.2"
+  }
+}
