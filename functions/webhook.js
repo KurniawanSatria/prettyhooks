@@ -1,9 +1,3 @@
-import crypto from 'crypto';
-
-const GITHUB_WEBHOOK_SECRET = process.env.GITHUB_WEBHOOK_SECRET;
-
-
-
 function buildDiscordEmbed(payload) {
   const repo = payload.repository?.full_name || 'unknown/repo';
   const branch = payload.ref?.replace('refs/heads/', '') || 'unknown';
@@ -79,27 +73,41 @@ async function sendToDiscord(webhookUrl, embedData) {
   }
 }
 
-/**
- * Handler utama Netlify (background)
- */
 export const handler = async (event, context) => {
   const responsePromise = Promise.resolve({
     statusCode: 202,
     body: JSON.stringify({ message: 'Webhook diterima, diproses di background' })
   });
+
   (async () => {
     try {
-      // Ambil raw body untuk signature verification
-      const rawBody = event.body;
+      let rawBody = event.body;
+      if (event.isBase64Encoded) {
+        rawBody = Buffer.from(event.body, 'base64').toString('utf8');
+      }
       const payload = JSON.parse(rawBody);
-      const pathParts = event.path.split('/');
-      const hook = pathParts[pathParts.length - 1];
-      if (!hook || hook.includes('/') || hook.length > 200) {
+
+      const pathParts = event.path.split('/').filter(p => p !== '');
+      const functionName = 'discord-webhook-background';
+      const funcIndex = pathParts.findIndex(part => part === functionName);
+      if (funcIndex === -1) {
+        console.error(`Function name '${functionName}' not found in path`);
+        return;
+      }
+      const hookSegments = pathParts.slice(funcIndex + 1);
+      if (hookSegments.length === 0) {
+        console.error('No hook segments found (ID and token)');
+        return;
+      }
+      const hook = hookSegments.join('/');
+      
+      if (!hook || hook.length > 300) {
         console.error('Invalid hook parameter');
         return;
       }
 
       const webhookUrl = `https://discord.com/api/webhooks/${encodeURIComponent(hook)}?with_components=true`;
+      console.log(`🔗 Mengirim ke Discord dengan hook: ${hook}`);
 
       const embedData = buildDiscordEmbed(payload);
       await sendToDiscord(webhookUrl, embedData);
