@@ -8,7 +8,7 @@ const WHITE = 0xffffff;
 // Set FOOTER_GIF in your Netlify environment variables.
 // Example: https://cdn.example.com/banner.gif
 // Leave empty / unset to disable the footer image.
-const FOOTER_GIF = process.env.FOOTER_GIF || '';
+const FOOTER_GIF = process.env.FOOTER_GIF || 'https://i.pinimg.com/736x/d2/54/b9/d254b9fa93edb9c1fca0b8a826e74fda.jpg';
 
 // ── Helpers ───────────────────────────────────
 
