@@ -88,7 +88,7 @@ export const handler = async (event, context) => {
       const payload = JSON.parse(rawBody);
 
       const pathParts = event.path.split('/').filter(p => p !== '');
-      const functionName = 'discord-webhook-background';
+      const functionName = 'webhook';
       const funcIndex = pathParts.findIndex(part => part === functionName);
       if (funcIndex === -1) {
         console.error(`Function name '${functionName}' not found in path`);
