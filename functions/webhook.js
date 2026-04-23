@@ -1,23 +1,9 @@
 import crypto from 'crypto';
 
-// Webhook secret dari GitHub (optional, tapi sangat disarankan)
 const GITHUB_WEBHOOK_SECRET = process.env.GITHUB_WEBHOOK_SECRET;
 
-/**
- * Verifikasi signature GitHub (X-Hub-Signature-256)
- */
-function verifySignature(payloadRaw, signatureHeader) {
-  if (!GITHUB_WEBHOOK_SECRET) return true; // skip jika tidak diset
-  if (!signatureHeader) return false;
 
-  const hmac = crypto.createHmac('sha256', GITHUB_WEBHOOK_SECRET);
-  const digest = 'sha256=' + hmac.update(payloadRaw).digest('hex');
-  return crypto.timingSafeEqual(Buffer.from(signatureHeader), Buffer.from(digest));
-}
 
-/**
- * Bangun embed Discord dari payload GitHub push event
- */
 function buildDiscordEmbed(payload) {
   const repo = payload.repository?.full_name || 'unknown/repo';
   const branch = payload.ref?.replace('refs/heads/', '') || 'unknown';
@@ -70,9 +56,6 @@ function buildDiscordEmbed(payload) {
   };
 }
 
-/**
- * Kirim payload ke Discord dengan timeout 10 detik
- */
 async function sendToDiscord(webhookUrl, embedData) {
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), 10000);
@@ -100,41 +83,17 @@ async function sendToDiscord(webhookUrl, embedData) {
  * Handler utama Netlify (background)
  */
 export const handler = async (event, context) => {
-  // 1. Kirim respons 202 (Accepted) segera ke GitHub
-  //    Ini penting agar GitHub tidak mengulang webhook.
   const responsePromise = Promise.resolve({
     statusCode: 202,
     body: JSON.stringify({ message: 'Webhook diterima, diproses di background' })
   });
-
-  // 2. Lakukan processing di background (tidak memblokir response)
   (async () => {
     try {
       // Ambil raw body untuk signature verification
       const rawBody = event.body;
-      const signature = event.headers['x-hub-signature-256'] || event.headers['X-Hub-Signature-256'];
-
-      // Verifikasi signature
-      if (!verifySignature(rawBody, signature)) {
-        console.error('Signature verification failed');
-        return;
-      }
-
-      // Hanya proses event push
-      const githubEvent = event.headers['x-github-event'] || event.headers['X-GitHub-Event'];
-      if (githubEvent !== 'push') {
-        console.log(`Ignored event: ${githubEvent}`);
-        return;
-      }
-
-      // Parse payload
       const payload = JSON.parse(rawBody);
-
-      // Ambil hook dari path parameter
-      // Path pattern: /.netlify/functions/discord-webhook/:hook
       const pathParts = event.path.split('/');
-      const hook = pathParts[pathParts.length - 1]; // ambil segmen terakhir
-
+      const hook = pathParts[pathParts.length - 1];
       if (!hook || hook.includes('/') || hook.length > 200) {
         console.error('Invalid hook parameter');
         return;
@@ -142,10 +101,7 @@ export const handler = async (event, context) => {
 
       const webhookUrl = `https://discord.com/api/webhooks/${encodeURIComponent(hook)}?with_components=true`;
 
-      // Bangun embed
       const embedData = buildDiscordEmbed(payload);
-
-      // Kirim ke Discord
       await sendToDiscord(webhookUrl, embedData);
 
       console.log(`✅ Notifikasi terkirim untuk ${payload.repository?.full_name}`);
@@ -154,6 +110,5 @@ export const handler = async (event, context) => {
     }
   })();
 
-  // 3. Kembalikan response ke GitHub
   return responsePromise;
 };
