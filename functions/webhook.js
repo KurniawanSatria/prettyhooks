@@ -571,7 +571,14 @@ function buildDiscordPayload(eventType, payload) {
     result.embed.image = { url: FOOTER_GIF };
   }
 
+  // Webhook profile: nama project sebagai username, avatar custom
+  const repoName = payload.repository?.name || 'Pretty Hooks';
+  const AVATAR   = process.env.WEBHOOK_AVATAR
+    || 'https://i.pinimg.com/736x/3a/6a/b0/3a6ab0f5fc3fbef254484d57e686932a.jpg';
+
   return {
+    username:   repoName,
+    avatar_url: AVATAR,
     embeds:     [result.embed],
     components: result.components
   };
